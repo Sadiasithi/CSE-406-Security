@@ -1,0 +1,5 @@
+!amplifier_template.startup
+*.md
+!readme.md
+*.txt
+__pycache__

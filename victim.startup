@@ -1,0 +1,53 @@
+#!/bin/bash
+# Victim machine startup script
+# This machine will be the target of the amplified ICMP flood
+
+mount -o remount,rw /proc/sys 
+
+# Configure network interface
+ip addr add 192.168.1.50/24 dev eth0
+ip link set eth0 up
+
+# Set default route
+ip route add default via 192.168.1.1
+
+# Install monitoring tools
+apt-get update > /dev/null 2>&1
+apt-get install -y iputils-ping tcpdump htop iotop net-tools iftop > /dev/null 2>&1
+
+# Enable ICMP echo replies (ensure victim responds to pings normally)
+echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
+
+# Create monitoring scripts
+cat > /root/monitor_traffic.sh << 'EOF'
+#!/bin/bash
+echo "=== VICTIM TRAFFIC MONITORING ==="
+echo "Press Ctrl+C to stop monitoring"
+echo "================================"
+tcpdump -i eth0 -n icmp
+EOF
+
+cat > /root/monitor_resources.sh << 'EOF'
+#!/bin/bash
+echo "=== SYSTEM RESOURCE MONITORING ==="
+while true; do
+    echo "$(date): CPU: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}') | $(free -h | grep Mem)"
+    sleep 2
+done
+EOF
+
+chmod +x /root/monitor_traffic.sh
+chmod +x /root/monitor_resources.sh
+
+# Display configuration
+echo "=== VICTIM MACHINE CONFIGURED ==="
+echo "IP Address: 192.168.1.50/24"
+echo "Network Interface: eth0"
+echo "ICMP Responses: ENABLED"
+echo "Monitoring Tools: tcpdump, htop, iftop"
+echo "Traffic Monitor: /root/monitor_traffic.sh"
+echo "Resource Monitor: /root/monitor_resources.sh"
+echo "==============================="
+
+# Keep container running
+/bin/bash

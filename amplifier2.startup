@@ -1,0 +1,54 @@
+#!/bin/bash
+# Amplifier machine startup script template
+# These machines will respond to broadcast ICMP requests
+
+MACHINE_NUM=$1
+if [ -z "$MACHINE_NUM" ]; then
+    MACHINE_NUM=2
+fi
+mount -o remount,rw /proc/sys
+
+# Calculate IP address (192.168.1.10 + machine_num)
+IP_ADDR="192.168.1.$((10 + MACHINE_NUM))"
+
+# Configure network interface
+ip addr add ${IP_ADDR}/24 dev eth0
+ip link set eth0 up
+
+# Set default route
+ip route add default via 192.168.1.1
+
+# Install basic tools
+apt-get update > /dev/null 2>&1
+apt-get install -y iputils-ping tcpdump net-tools > /dev/null 2>&1
+
+# Enable ICMP echo replies (this is crucial for amplification)
+echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
+echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+
+# Enable broadcast ICMP responses (key for Smurf attack)
+echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+
+# Create monitoring script
+cat > /root/monitor_icmp.sh << 'EOF'
+#!/bin/bash
+echo "=== AMPLIFIER ICMP MONITORING ==="
+echo "Monitoring ICMP traffic on this amplifier"
+echo "Press Ctrl+C to stop"
+echo "================================="
+tcpdump -i eth0 -n icmp
+EOF
+
+chmod +x /root/monitor_icmp.sh
+
+# Display configuration
+echo "=== AMPLIFIER${MACHINE_NUM} CONFIGURED ==="
+echo "IP Address: ${IP_ADDR}/24"
+echo "Network Interface: eth0"
+echo "ICMP Broadcast Response: ENABLED"
+echo "ICMP Echo Response: ENABLED"
+echo "Monitor Script: /root/monitor_icmp.sh"
+echo "=============================="
+
+# Keep container running
+/bin/bash

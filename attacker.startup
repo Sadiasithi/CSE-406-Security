@@ -1,0 +1,36 @@
+#!/bin/bash
+# Attacker machine startup script
+# This machine will run the ICMP Smurf attack tool
+
+mount -o remount,rw /proc/sys 
+
+# Configure network interface
+ip addr add 192.168.1.100/24 dev eth0
+ip link set eth0 up
+
+# Set default route
+ip route add default via 192.168.1.1
+
+# Enable IP forwarding (might be needed for some operations)
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Install required packages
+apt-get update > /dev/null 2>&1
+apt-get install -y python3 python3-pip iputils-ping tcpdump net-tools > /dev/null 2>&1
+
+# Create attack directory
+mkdir -p /root/attack
+
+# Copy attack script (will be manually copied in real scenario)
+# The icmp_smurf_attack.py should be copied to this machine
+
+# Display network configuration
+echo "=== ATTACKER MACHINE CONFIGURED ==="
+echo "IP Address: 192.168.1.100/24"
+echo "Network Interface: eth0"
+echo "Broadcast Address: 192.168.1.255"
+echo "Ready to launch ICMP Smurf attack"
+echo "=================================="
+
+# Keep container running
+/bin/bash
