@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Fingerprinting</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        body {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .results-table {
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .heatmap-container {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        background-color: #f9f9f9;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        }
+
+        .heatmap {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <main class="container" x-data="app()">
+        <h1>CSE406: Website Fingerprinting</h1>
+        
+        <div class="button-group">
+            <button @click="collectLatencyData()" :disabled="isCollecting">Collect Latency Data</button>
+            <button @click="collectTraceData()" :disabled="isCollecting">Collect trace</button>
+            <button @click="downloadTraces()">Download traces</button>
+            <button @click="refreshResults()">Refresh results</button>
+            <button @click="clearResults()">Clear all results</button>
+        </div>
+
+        <div x-show="status" role="alert" x-text="status" 
+             :class="{'alert-success': !statusIsError, 'alert-error': statusIsError}"></div>
+
+        <!-- Latency Results Table -->
+        <template x-if="latencyResults && !showingTraces">
+            <div class="results-container">
+                <h3>Latency Results</h3>
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>N</th>
+                            <th>Median Access Latency (ms)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(time, n) in latencyResults" :key="n">
+                            <tr>
+                                <td x-text="n"></td>
+                                <td x-text="time.toFixed(2)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+
+        <!-- Heatmap for Traces -->
+        <template x-if="heatmapImages.length > 0">
+            <div class="heatmap-container">
+              <h3>Trace Heatmaps</h3>
+              <template x-for="(heatmap, index) in heatmapImages" :key="index">
+                <div style="margin-bottom: 1rem;">
+                  <img :src="heatmap.image" alt="Heatmap" class="heatmap">
+                  <p x-text="heatmap.stats"></p>
+                </div>
+              </template>
+            </div>
+        </template>
+          
+    </main>
+
+    <script src="index.js"></script>
+</body>
+</html>
