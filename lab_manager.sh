@@ -1,7 +1,7 @@
 #!/bin/bash
 # Kathara Lab Management Script for ICMP Smurf Attack Simulation
 
-LAB_DIR="/Users/mohammad/Downloads/coding/sec_project"
+LAB_DIR="/home/sadia-afrin-sithi/Downloads/sec_project"
 LAB_NAME="smurf_attack_lab"
 
 # Colors for output
@@ -53,7 +53,7 @@ start_lab() {
     echo "This may take 2-3 minutes..."
     
     export KATHARA_DOCKER_ARGS="--privileged"
-    kathara lstart
+    python -m kathara lstart
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}Lab started successfully!${NC}"
@@ -77,7 +77,7 @@ start_lab() {
 stop_lab() {
     echo -e "${YELLOW}Stopping ICMP Smurf Attack Lab...${NC}"
     cd "$LAB_DIR"
-    kathara lclean
+    python -m kathara lclean
     echo -e "${GREEN}Lab stopped.${NC}"
 }
 
@@ -91,7 +91,7 @@ restart_lab() {
 show_status() {
     echo -e "${BLUE}Lab Status:${NC}"
     cd "$LAB_DIR"
-    kathara linfo
+    python -m kathara linfo
     
     echo ""
     echo -e "${BLUE}Network Configuration:${NC}"
@@ -116,7 +116,7 @@ connect_machine() {
     
     echo -e "${YELLOW}Connecting to $machine...${NC}"
     cd "$LAB_DIR"
-    kathara connect "$machine"
+    python -m kathara connect "$machine"
 }
 
 monitor_traffic() {
@@ -127,13 +127,13 @@ monitor_traffic() {
     echo ""
     
     cd "$LAB_DIR"
-    kathara exec "$machine" tcpdump -i eth0 -n icmp
+    python -m kathara exec "$machine" tcpdump -i eth0 -n icmp
 }
 
 clean_lab() {
     echo -e "${YELLOW}Cleaning up lab...${NC}"
     cd "$LAB_DIR"
-    kathara lclean
+    python -m kathara lclean
     echo -e "${GREEN}Lab cleaned.${NC}"
 }
 
@@ -152,7 +152,7 @@ launch_attack() {
         cd "$LAB_DIR"
         
         echo "Launching attack..."
-        kathara exec attacker -- \
+        python -m kathara exec attacker -- \
           python3 /root/icmp_smurf_attack.py \
             -v 192.168.1.50 -b 192.168.1.255 -r 10 -d 60
     else

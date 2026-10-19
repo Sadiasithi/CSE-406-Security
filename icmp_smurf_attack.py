@@ -2,11 +2,6 @@
 """
 ICMP Smurf Attack Educational Simulation Tool
 
-This tool demonstrates the ICMP Smurf attack technique for educational purposes.
-It crafts custom ICMP packets using raw sockets and implements IP spoofing
-to show how broadcast amplification attacks work.
-
-Educational Use Only - Do not use for malicious purposes!
 """
 
 import socket

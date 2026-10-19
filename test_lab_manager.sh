@@ -2,7 +2,8 @@
 # Kathara Test Lab Management Script for ICMP Smurf Attack Simulation
 # Small 4-machine configuration for initial testing
 
-LAB_DIR="/Users/mohammad/Downloads/coding/sec_project"
+LAB_DIR="/home/sadia-afrin-sithi/Downloads/sec_project"
+
 LAB_NAME="smurf_test_lab"
 
 # Colors for output
@@ -20,7 +21,7 @@ print_header() {
 }
 
 print_usage() {
-    echo "Usage: $0 {start|stop|restart|status|connect|monitor|clean|copy|attack|test}"
+    echo "Usage: $0 {start|stop|restart|status|connect|monitor|clean|copy|attack|test|measure|analyze}"
     echo ""
     echo "Commands:"
     echo "  start     - Start the test lab (4 machines)"
@@ -32,6 +33,8 @@ print_usage() {
     echo "  copy      - Copy attack files"
     echo "  attack    - Launch test attack"
     echo "  test      - Run connectivity tests"
+    echo "  measure   - Launch attack with success measurement"
+    echo "  analyze   - Analyze last attack results"
     echo "  clean     - Clean up lab"
 }
 
@@ -97,12 +100,16 @@ copy_files() {
     fi
 
     echo "Attacker container: $attacker_container"
-    echo "Copying icmp_smurf_attack.py → /root/ inside attacker..."
+    echo "Copying files to attacker machine..."
 
-    # Copy and chmod
+    # Copy attack script and monitor script
     if docker cp icmp_smurf_attack.py "${attacker_container}":/root/ \
-       && docker exec "${attacker_container}" chmod +x /root/icmp_smurf_attack.py; then
+       && docker cp attack_monitor.py "${attacker_container}":/root/ \
+       && docker exec "${attacker_container}" chmod +x /root/icmp_smurf_attack.py \
+       && docker exec "${attacker_container}" chmod +x /root/attack_monitor.py; then
         echo -e "${GREEN}Files copied successfully!${NC}"
+        echo "  ✓ icmp_smurf_attack.py"
+        echo "  ✓ attack_monitor.py"
     else
         echo -e "${RED}docker cp failed – aborting.${NC}"
         return 1
@@ -115,23 +122,23 @@ test_connectivity() {
     cd "$LAB_DIR"
     
     echo "1. Testing attacker to victim connectivity..."
-    kathara exec attacker "ping -c 2 192.168.1.50"
+    python -m kathara exec attacker "ping -c 2 192.168.1.50"
     
     echo ""
     echo "2. Testing attacker to amplifiers..."
-    kathara exec attacker "ping -c 1 192.168.1.11"
-    kathara exec attacker "ping -c 1 192.168.1.12"
+    python -m kathara exec attacker "ping -c 1 192.168.1.11"
+    python -m kathara exec attacker "ping -c 1 192.168.1.12"
     
     echo ""
     echo "3. Testing broadcast ping..."
-    kathara exec attacker "ping -b -c 1 192.168.1.255"
+    python -m kathara exec attacker "ping -b -c 1 192.168.1.255"
     
     echo ""
     echo "4. Checking ICMP settings on amplifiers..."
     echo "Amplifier1 ICMP broadcast setting:"
-    kathara exec amplifier1 "cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
+    python -m kathara exec amplifier1 "cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
     echo "Amplifier2 ICMP broadcast setting:"
-    kathara exec amplifier2 "cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
+    python -m kathara exec amplifier2 "cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
     
     echo -e "${GREEN}Connectivity test completed!${NC}"
 }
@@ -139,7 +146,7 @@ test_connectivity() {
 show_status() {
     echo -e "${BLUE}Test Lab Status:${NC}"
     cd "$LAB_DIR"
-    kathara linfo
+    python -m kathara linfo
     
     echo ""
     echo -e "${BLUE}Network Configuration:${NC}"
@@ -167,7 +174,7 @@ connect_machine() {
     
     echo -e "${YELLOW}Connecting to $machine...${NC}"
     cd "$LAB_DIR"
-    kathara connect "$machine"
+    python -m kathara connect "$machine"
 }
 
 monitor_traffic() {
@@ -178,7 +185,7 @@ monitor_traffic() {
     echo ""
     
     cd "$LAB_DIR"
-    kathara exec "$machine" "tcpdump -i eth0 -n icmp"
+    python -m kathara exec "$machine" "tcpdump -i eth0 -n icmp"
 }
 
 launch_test_attack() {
@@ -196,12 +203,272 @@ launch_test_attack() {
     if [[ $confirm =~ ^[Yy]$ ]]; then
         cd "$LAB_DIR"
         echo "Launching test attack..."
-        kathara exec attacker -- \
+        python -m kathara exec attacker -- \
           python3 /root/icmp_smurf_attack.py \
             -v 192.168.1.50 -b 192.168.1.255 -r 5 -d 20
     else
         echo "Test attack cancelled."
     fi
+}
+
+measure_attack_success() {
+    echo -e "${YELLOW}Launching Attack with Success Measurement...${NC}"
+    echo ""
+    echo "This will:"
+    echo "  1. Start traffic monitoring on victim"
+    echo "  2. Launch coordinated attack"
+    echo "  3. Measure amplification factor"
+    echo "  4. Calculate success percentage"
+    echo ""
+    
+    # Get attack parameters
+    read -p "Attack duration (seconds) [30]: " duration
+    duration=${duration:-30}
+    
+    read -p "Attack rate (packets/second) [10]: " rate
+    rate=${rate:-10}
+    
+    read -p "Continue with measured attack? (y/N): " confirm
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        echo "Attack cancelled."
+        return
+    fi
+    
+    cd "$LAB_DIR"
+    
+    echo -e "${BLUE}Starting Attack Success Measurement...${NC}"
+    echo "Duration: ${duration}s, Rate: ${rate} pps"
+    echo "Expected packets sent: $((duration * rate))"
+    echo ""
+    
+    # Start monitoring on victim (background)
+    echo "1. Starting victim traffic monitoring..."
+    python -m kathara exec victim -- bash -c "
+        echo 'Starting tcpdump monitoring...'
+        timeout $((duration + 10)) tcpdump -i eth0 -n -q 'icmp and dst 192.168.1.50' > /tmp/victim_traffic.log 2>&1 &
+        echo 'Victim monitoring started'
+    " &
+    
+    # Start monitoring on amplifiers (background)
+    echo "2. Starting amplifier monitoring..."
+    python -m kathara exec amplifier1 -- bash -c "
+        timeout $((duration + 10)) tcpdump -i eth0 -n -q 'icmp and src 192.168.1.50' > /tmp/amp1_traffic.log 2>&1 &
+    " &
+    
+    python -m kathara exec amplifier2 -- bash -c "
+        timeout $((duration + 10)) tcpdump -i eth0 -n -q 'icmp and src 192.168.1.50' > /tmp/amp2_traffic.log 2>&1 &
+    " &
+    
+    # Wait for monitoring to start
+    sleep 3
+    
+    # Launch attack
+    echo "3. Launching attack..."
+    python -m kathara exec attacker -- \
+      python3 /root/icmp_smurf_attack.py \
+        -v 192.168.1.50 -b 192.168.1.255 -r $rate -d $duration
+    
+    # Wait for monitoring to complete
+    echo "4. Waiting for monitoring to complete..."
+    sleep 5
+    
+    # Collect and analyze results
+    echo ""
+    echo -e "${BLUE}ATTACK SUCCESS ANALYSIS${NC}"
+    echo "=================================="
+    
+    # Count victim packets received
+    victim_packets=$(python -m kathara exec victim -- bash -c "
+        sleep 2
+        if [ -f /tmp/victim_traffic.log ]; then
+            grep -c 'ICMP' /tmp/victim_traffic.log 2>/dev/null || echo 0
+        else
+            echo 0
+        fi
+    ")
+    
+    # Count amplifier responses
+    amp1_responses=$(python -m kathara exec amplifier1 -- bash -c "
+        sleep 2
+        if [ -f /tmp/amp1_traffic.log ]; then
+            grep -c 'ICMP' /tmp/amp1_traffic.log 2>/dev/null || echo 0
+        else
+            echo 0
+        fi
+    ")
+    
+    amp2_responses=$(python -m kathara exec amplifier2 -- bash -c "
+        sleep 2
+        if [ -f /tmp/amp2_traffic.log ]; then
+            grep -c 'ICMP' /tmp/amp2_traffic.log 2>/dev/null || echo 0
+        else
+            echo 0
+        fi
+    ")
+    
+    # Calculate metrics
+    expected_packets=$((duration * rate))
+    total_responses=$((amp1_responses + amp2_responses))
+     if [ "$expected_packets" -gt 0 ]; then
+        amplification_factor=$(awk "BEGIN {printf \"%.2f\", $victim_packets / $expected_packets}")
+        success_percentage=$(awk "BEGIN {printf \"%.1f\", ($victim_packets / $expected_packets / 2) * 100}")
+    else
+        amplification_factor="0.00"
+        success_percentage="0.0"
+    fi    # ...existing code...
+    
+    # Calculate metrics
+    expected_packets=$((duration * rate))
+    total_responses=$((amp1_responses + amp2_responses))
+    
+    # Calculate metrics using awk for floating point math
+    if [ "$expected_packets" -gt 0 ]; then
+        # Calculate amplification factor (received/sent)
+        amplification_factor=$(awk -v vp="$victim_packets" -v ep="$expected_packets" \
+            'BEGIN {printf "%.2f", vp/ep}')
+        
+        # Calculate success percentage considering 2x amplification target
+        success_percentage=$(awk -v vp="$victim_packets" -v ep="$expected_packets" \
+            'BEGIN {printf "%.1f", (vp/(ep*2))*100}')
+    else
+        amplification_factor="0.00"
+        success_percentage="0.0"
+    fi
+    
+    # Determine responding amplifiers
+    responding_amps=0
+    [ "$amp1_responses" -gt 0 ] && ((responding_amps++))
+    [ "$amp2_responses" -gt 0 ] && ((responding_amps++))
+    
+    # Calculate participation rate using awk
+    participation_rate=$(awk -v ra="$responding_amps" \
+        'BEGIN {printf "%.1f", (ra/2)*100}')
+    
+    # Success rating calculations using awk instead of bc
+    success_rating=$(awk -v sp="$success_percentage" \
+        'BEGIN {
+            if (sp >= 80) print "1"
+            else if (sp >= 60) print "2"
+            else if (sp >= 30) print "3"
+            else print "4"
+        }')
+    
+    case "$success_rating" in
+        1) rating="🔴 HIGHLY SUCCESSFUL" ;;
+        2) rating="🟡 MODERATELY SUCCESSFUL" ;;
+        3) rating="🟠 PARTIALLY SUCCESSFUL" ;;
+        *) rating="🟢 INEFFECTIVE" ;;
+    esac
+    
+    # ...existing code...
+    # Determine responding amplifiers
+    responding_amps=0
+    if [ "$amp1_responses" -gt 0 ]; then
+        responding_amps=$((responding_amps + 1))
+    fi
+    if [ "$amp2_responses" -gt 0 ]; then
+        responding_amps=$((responding_amps + 1))
+    fi
+    
+    participation_rate=$(echo "scale=1; ($responding_amps / 2) * 100" | bc -l 2>/dev/null || echo "0")
+    
+    # Display results
+    echo ""
+    echo "AMPLIFICATION ANALYSIS:"
+    echo "  • Attack Packets Sent: $expected_packets"
+    echo "  • Victim Packets Received: $victim_packets"
+    echo "  • Amplification Factor: ${amplification_factor}x"
+    echo "  • Theoretical Maximum: 2x"
+    echo ""
+    echo "AMPLIFIER PARTICIPATION:"
+    echo "  • Amplifier1 (192.168.1.11): $amp1_responses responses"
+    echo "  • Amplifier2 (192.168.1.12): $amp2_responses responses"
+    echo "  • Responding Amplifiers: $responding_amps/2 (${participation_rate}%)"
+    echo ""
+    echo "ATTACK EFFECTIVENESS:"
+    
+    # Success rating
+    res=$(echo "$success_percentage >= 80" | bc -l 2>/dev/null || echo 0)
+    if [ "$res" -eq 1 ]; then
+        rating="🔴 HIGHLY SUCCESSFUL"
+    else
+        res=$(echo "$success_percentage >= 60" | bc -l 2>/dev/null || echo 0)
+        if [ "$res" -eq 1 ]; then
+            rating="🟡 MODERATELY SUCCESSFUL"
+        else
+            res=$(echo "$success_percentage >= 30" | bc -l 2>/dev/null || echo 0)
+            if [ "$res" -eq 1 ]; then
+                rating="🟠 PARTIALLY SUCCESSFUL"
+            else
+                rating="🟢 INEFFECTIVE"
+            fi
+        fi
+    fi
+    
+    echo "  • Success Percentage: ${success_percentage}%"
+    echo "  • Overall Rating: $rating"
+    echo ""
+    
+    # Recommendations
+    echo "RECOMMENDATIONS:"
+    res=$(echo "$participation_rate < 100" | bc -l 2>/dev/null || echo 0)
+    if [ "$res" -eq 1 ]; then
+        echo "  • Check ICMP broadcast settings on silent amplifiers"
+    fi
+    
+    res=$(echo "$success_percentage < 50" | bc -l 2>/dev/null || echo 0)
+    if [ "$res" -eq 1 ]; then
+        echo "  • Verify broadcast domain configuration"
+        echo "  • Check network connectivity between machines"
+    fi
+    
+    res=$(echo "$amplification_factor < 1" | bc -l 2>/dev/null || echo 0)
+    if [ "$res" -eq 1 ]; then
+        echo "  • Verify victim is receiving packets"
+        echo "  • Check IP forwarding and routing"
+    fi
+    
+    echo "=================================="
+    
+    # Save results to file
+    echo "Saving results to attack_results.log..."
+    {
+        echo "=========================================="
+        echo "SMURF ATTACK SUCCESS MEASUREMENT"
+        echo "Date: $(date)"
+        echo "Duration: ${duration}s, Rate: ${rate} pps"
+        echo "Expected Packets: $expected_packets"
+        echo "Victim Received: $victim_packets"
+        echo "Amplification: ${amplification_factor}x"
+        echo "Success Rate: ${success_percentage}%"
+        echo "Participating Amplifiers: $responding_amps/2"
+        echo "Rating: $rating"
+        echo "=========================================="
+    } >> attack_results.log
+    
+    echo -e "${GREEN}Attack measurement completed!${NC}"
+    echo "Results saved to attack_results.log"
+}
+
+analyze_last_attack() {
+    echo -e "${YELLOW}Analyzing Last Attack Results...${NC}"
+    
+    if [ ! -f "attack_results.log" ]; then
+        echo -e "${RED}No attack results found. Run 'measure' command first.${NC}"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "${BLUE}LAST ATTACK ANALYSIS${NC}"
+    tail -n 10 attack_results.log
+    
+    echo ""
+    echo -e "${BLUE}ATTACK HISTORY${NC}"
+    echo "Recent attacks:"
+    grep "Date:" attack_results.log | tail -n 5
+    
+    echo ""
+    echo "View full log: cat attack_results.log"
 }
 
 
@@ -252,6 +519,14 @@ case "$1" in
     attack)
         print_header
         launch_test_attack
+        ;;
+    measure)
+        print_header
+        measure_attack_success
+        ;;
+    analyze)
+        print_header
+        analyze_last_attack
         ;;
     clean)
         print_header
